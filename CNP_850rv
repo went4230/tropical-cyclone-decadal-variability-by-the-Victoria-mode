@@ -1,0 +1,225 @@
+
+begin
+yrStrt =  1950
+yrLast =  2022 
+yrClimStrt = 1981   
+yrClimLast = 2010
+
+  latS_vm    =  20.
+  latN_vm    =  61.
+  lonL_vm    = 120.
+  lonR_vm    = 260.
+  lonC_vm    = 190
+
+
+f2            = addfile("/mnt/d/work/TC/quyu_SST/key_sst_0_20_160_200.nc", "r")
+key_sst_jjaso           = f2->sst_key_index
+sst = dim_standardize_Wrap(key_sst_jjaso, 0)
+
+  ihp_l    = 0                             ; 0-低通；1-高通；2-带通
+  ihp_h    = 1
+  nWgt     = 9
+  sigma    = 1.0                           ; Lanczos sigma
+  fca      = 0.1
+  fcb      = -999
+  wgt_l      = filwgts_lanczos (nWgt, ihp_l, fca, fcb, sigma )
+
+  ipo_l = wgt_runave_n_Wrap(sst, wgt_l, -1, 0) 
+  IPO_LF=dim_standardize_n_Wrap(ipo_l(:),0,0)
+
+;;;;;;;;;;风场资料;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+f_uwnd = addfile("/mnt/d/data/uwnd.mon.mean.nc","r")
+f_vwnd = addfile("/mnt/d/data/vwnd.mon.mean.nc","r")
+uwnd   = f_uwnd->uwnd
+vwnd   = f_vwnd->vwnd
+uwnd_time = cd_calendar(uwnd&time, -1)/100  ;194801-201811
+vwnd_time = cd_calendar(vwnd&time, -1)/100
+iuwnd_time  = ind(uwnd_time.ge.yrStrt .and. uwnd_time.le.yrLast)
+ivwnd_time  = ind(vwnd_time.ge.yrStrt .and. vwnd_time.le.yrLast)
+climuwnd_time  = ind(uwnd_time.ge.yrClimStrt .and. uwnd_time.le.yrClimLast)
+climvwnd_time  = ind(vwnd_time.ge.yrClimStrt .and. vwnd_time.le.yrClimLast)
+
+; uwndi    = uwnd(iuwnd_time,9,:,:)  ;850hPa 是第三层
+; vwndi    = vwnd(ivwnd_time,9,:,:) ;200hPa 是第十层
+
+
+uwndi    = uwnd(iuwnd_time,2,:,:)  ;850hPa 是第三层
+vwndi    = vwnd(ivwnd_time,2,:,:) ;200hPa 是第十
+
+
+ lat= uwndi&lat
+ lon= uwndi&lon
+
+; vr= uv2dv_cfd(uwndi, vwndi, lat, lon, 2)  ; 散度
+vr= uv2vr_cfd(uwndi, vwndi, lat, lon, 3) ; 涡度
+ copy_VarCoords(vwndi, vr)
+
+vr_check = new((/73,73,144/),float)
+vr_check!0 = "time"
+; vr_check&time = uwndi&time
+vr_check!1 = "lat"
+vr_check&lat = uwndi&lat
+vr_check!2 = "lon"
+vr_check&lon = uwndi&lon
+
+do i = 0, 69
+vr_check(i,:,:) = (vr(5+12*i,:,:)+vr(6+12*i,:,:)+vr(7+12*i,:,:)+vr(8+12*i,:,:)+vr(9+12*i,:,:))/5
+end do 
+printVarSummary(vr_check)
+; exit()
+; reg_vr = regCoef_n(vmi_LF, vr_check, 0, 0)  ;VM
+reg_vr = regCoef_n(IPO_LF, vr_check, 0, 0)  ;IPO
+df2        = reg_vr@nptxy-2
+tval2      = reg_vr@tval
+prob2      = student_t(tval2, df2) 
+prob    = reshape(prob2, (/73,144/))
+copy_VarMeta(vr_check(0,:,:), reg_vr)
+copy_VarCoords(reg_vr, prob)
+prob    = where(prob.le.0.1, prob, prob@_FillValue)
+reg_vr_f = reg_vr*10^6
+; prob_f = prob*10^6
+copy_VarCoords(reg_vr, reg_vr_f)
+printMinMax(reg_vr_f, 0)
+; exit()
+
+wks  = gsn_open_wks("eps","850RV_0422")            
+; wks  = gsn_open_wks("eps","850div") 
+
+
+
+cnplot        = new(2, graphic)
+shade         = new(2, graphic)
+ cnres = True   
+cnres@gsnDraw = False ; don't draw
+cnres@gsnFrame = False ; don't advance frame
+cnres@cnFillOn         = True                 ; シェードを使う
+ cnres@cnLinesOn        = False                ; コンターは使わない
+cnres@cnLineLabelsOn   = False                ; コンターラベルもない
+cnres@cnInfoLabelOn    = False                ; コンター情報もない
+cnres@lbLabelBarOn     = False                ; 各パネルごとにはカラーバーを描かない(今のところ)
+;cnres@cnFillMode       = "RasterFill"
+                                               ; あとで一時的にTrueとなる
+cnres@lbTitleOn        = True                 ; カラーバーにタイトルを付ける
+cnres@lbTitlePosition  = "Right"              ; カラーバーのタイトルの位置
+cnres@lbTitleDirection = "Across"             ; カラーバーのタイトルの向き
+cnres@pmLabelBarOrthogonalPosF    = 0.3       ; カラーバーの位置を少し下にずらす
+  
+cnres@gsnAddCyclic     = False                ; 経度方向に周期的ではない
+cnres@tmXTOn           = False                ; 上側のx軸を用いない(目盛を消す)
+cnres@cnLevelSelectionMode = "ExplicitLevels"   ; コンターレベルの設定を"ManvalLevels"モードに
+ cnres@mpLandFillColor      = "white"            ;land white  
+
+
+  cnres@mpMinLatF            = -5         ; zoom in on map
+  cnres@mpMaxLatF            = 25
+ cnres@mpMinLonF            = 120
+  cnres@mpMaxLonF            = 190
+ cnres@mpCenterLonF         = 155
+  cnres@mpGeophysicalLineThicknessF = 2
+
+ cnres@tmXBMinorOn  = False
+ cnres@tmYLMinorOn  = False
+
+  cnres@tmYLLabelFontHeightF  =0.02
+ cnres@tmXBLabelFontHeightF  =0.02
+ cnres@gsnMajorLatSpacing = 10
+cnres@tmYLLabelStride = 1
+cnres@tmYLLabelFontHeightF = 0.04
+cnres@tmYLLabelDeltaF   =-0.6
+
+ cnres@gsnMajorLatSpacing = 10
+cnres@tmYLLabelStride = 1
+cnres@tmYLLabelFontHeightF = 0.04
+cnres@tmYLLabelDeltaF   =-0.6
+
+; cnres@cnLevelSelectionMode = "ExplicitLevels"    D:\ncl\DingRQ
+  cmapxxx = read_colormap_file("/mnt/d/work/TC/quyu_SST/14colors.rgb")         
+  cnres@cnFillPalette = cmapxxx          
+cnres@cnLevels                    = (/ -1.5,-1.25,-1,-0.75,-0.5, -0.25, 0,0.25, 0.5,0.75, 1,1.25, 1.5/)
+
+
+cnres@lbTitleString            = "~S~o~N~C"
+  ; cnres@lbTitleFontHeightF       = 0.008
+ ; cnres@lbLabelFontHeightF       = 0.008
+ ;cnres@gsnLeftString            = "SST"
+ cnres@gsnRightString            = ""
+ cnres@gsnLeftString            = ""
+ ; cnres@gsnLeftStringFontColor   = "blue"
+  ; cnres@gsnLeftStringFontHeightF = 0.014
+  cnres@tmYLOn                   = True        ; 左側のy軸を使わない
+  cnres@tmYLLabelsOn             = True
+  cnres@tmYROn                   = False         ; 右側のy軸を使う
+  cnres@tmYRLabelsOn             = False
+ ; cnres@tmYLTickSpacingF         = 5
+  cnres@tmXBLabelFontHeightF     = 0.02
+cnres@tmYUseLeft               =False
+  cnres@mpShapeMode              = "FreeAspect" ; 地図プロットの縦横比を可変に
+  cnres@vpHeightF                =0.3
+  cnres@vpWidthF                 = 0.65          ; 图的宽度比例                                           ; これに合わせて地図は縦長になる
+ cnres@tmXBTickSpacingF         = 20           ; 横軸の目盛間隔を45°に
+  cnres@tmYLLabelFontHeightF     = 0.02   ;标签字体大小
+ cnres@tmYLOn                   =  True     ; 左側のy軸を使わない
+ cnres@tmYLLabelsOn             = True
+ cnres@tmXBOn                   = True
+ cnres@tmXBLabelsOn             = True
+
+cnplot(0)=   gsn_csm_contour_map(wks, reg_vr_f   , cnres)
+
+ resP                     = True         ; modify the panel plot
+resP@gsnMaximize         = True         ; large format
+resP@gsnPanelLabelBar    = True         ; add common colorbar
+;resP@lbBoxEndCapStyle    =  "TriangleBothEnds"  ; shape of the two outer boxes of the LabelBar
+resP@lbLabelStride  =2
+resP@gsnPanelYWhiteSpacePercent  =4     ;空白区域比例
+; resP@lbLabelStrings = (/-0.4,-0.3,-0.2,-0.1,0.1,0.2,0.3,0.4/)
+
+;resP@gsnPanelBottom   = 0.3                   ; add space at bottom
+resP@pmTickMarkDisplayMode  ="Always"
+resP@lbOrientation= "Horizontal"
+resP@pmLabelBarOrthogonalPosF = -0.01
+resP@pmLabelBarWidthF= 0.7
+resP@pmLabelBarHeightF=0.1
+
+
+
+; resP@lbOrientation= "Vertical"
+; resP@pmLabelBarOrthogonalPosF = 0.025
+; resP@pmLabelBarWidthF= 0.1
+; resP@pmLabelBarHeightF=0.7
+;;;;;;;;;;;;打点
+
+
+;;;;;;;;;;;;;打点
+ress        = True
+ress@gsnDraw = False
+ress@gsnFrame= False
+
+ress@gsnLeftString = ""
+ress@gsnRightString= ""
+ress@cnInfoLabelOn = False
+ress@lbLabelBarOn      = False
+ress@cnLinesOn         = False
+ress@cnFillOn          = True
+ress@cnFillPattern     = 7
+ress@cnFillScaleF      = 1.5
+ress@cnLevelSelectionMode = "ManualLevels"
+ress@cnFillOpacityF = 0.5
+ress@cnLineLabelsOn      = False
+ress@gsnSpreadColorStart = 1
+ress@gsnSpreadColorEnd   = 1
+
+
+
+; ress@gsnLeftString = "VM"
+; ress@gsnRightString= "FMA"
+shade(0)    = gsn_csm_contour(wks, prob  , ress) ;rc_pdo_ssta  Pv_pdo_ssta
+overlay(cnplot(0), shade(0))
+
+
+
+
+
+gsn_panel(wks, (/cnplot/), (/1,1/), resP)
+
+end
+
