@@ -1,0 +1,220 @@
+load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/gsn_code.ncl"
+load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/gsn_csm.ncl"
+load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/contributed.ncl"
+load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/shea_util.ncl"
+
+begin
+
+
+
+x1 =(/0.63,0.54,0.514,0.49,0.485,0.45,0.432,0.395,0.39,0.25,0.285,0.25,0.203,0.23,0.232/)
+y1 =(/0.48,0.16,0.263,0.17,0.09,0.267,0.23,0.112,0.228,0.290,0.42,0.43,0.16,0.208,0.061/)
+ 
+         "MIROC6","MPI-ESM1-2-HR","MPI-ESM1-2-LR","MRI-ESM2-0","NESM3","SAM0-UNICON","TaiESM1"/)
+               
+                  
+filename1     = (/"ACCESS-ESM1-5","CESM2-WACCM-FV2","MIROC6","CanESM5","MPI-ESM-1-2-HAM","HadGEM3-GC31-LL","CESM2","MPI-ESM1-2-HR","NorCPM1",\
+                 "GISS-E2-1-G","CMCC-CM2-SR5","CAMS-CSM1-0","IPSL-CM6A-LR","MPI-ESM1-1-2-LR","ACCESS-CM2"/)
+
+
+
+; ;**********************************
+; ;              base
+; ;**********************************
+  wks = gsn_open_wks("eps","IPO-VM-TC_0408")         ; send graphics to PNG file  
+  plot = new(1,graphic)                ; create graphic array
+;   plot1= new(2,graphic) 
+
+  Bres1                = True
+  Bres1@gsnDraw        = False
+  Bres1@gsnFrame       = False
+  Bres1@gsnMaximize    = False
+  Bres1@vpWidthF       = 0.55
+  Bres1@vpHeightF      = 0.55
+
+  Bres1@tmYROn        = False        ;关掉右边以及顶端的大刻度
+  Bres1@tmXTOn        = False
+
+  Bres1@tmXBMinorOn   = True   ;关掉所有的小刻度
+  Bres1@tmXTMinorOn   = False                  
+  Bres1@tmYLMinorOn   = True
+  Bres1@tmYRMinorOn   = False
+ 
+  Bres1@tmXBMajorLengthF = 0.008
+  Bres1@tmYLMajorLengthF = 0.008
+
+  colors1 = (/"deeppink","red","red4","orange4","peru",\
+              "sandybrown","yellow4","gold","khaki","green3",\
+              "green4","darkgreen","blue4","midnightblue","deepskyblue"/)
+
+
+  
+  Bres1@tmXMajorGrid                = False    ; Turn on grid lines
+  Bres1@tmXMajorGridLineDashPattern = 2       ; Dashed lines
+  Bres1@tmXMajorGridThicknessF      = 0.1     ; default is 2 (?)
+
+  Bres1@tmYMajorGrid                = False    ; Turn on grid lines
+  Bres1@tmYMajorGridLineDashPattern = 2       ; Dashed lines
+  Bres1@tmYMajorGridThicknessF      = 0.1     ; default is 2 (?)
+;   colors1 = (/"orangered","peru","seagreen","saddlebrown",\
+;               "yellow4","seagreen3","orange","red","blue",\
+;               "pink","black","brown","yellow3",\
+;               "steelblue","black","yellow3","firebrick","forestgreen",\
+;               "dodgerblue2","darkorange2","darkgoldenrod","deeppink2","deepskyblue4",\
+;               "purple","firebrick","gold4","gray","olivedrab",\
+;               "orchid"/)         
+
+  Bres1@xyMarkLineMode      = "Markers"                                      
+  Bres1@xyMonoMarkerColor   = False 
+  Bres1@xyMarkerColors      = colors1
+  Bres1@xyMarkerSizeF       = 0.018              
+;   Bres1@xyDashPatterns      = (/1,1,1,1,1,1,1,1,1,1,\ 
+;                                 1,1,1,1,1,1,1,1,1,1,\
+;                                 1,1,1,1,1,1/)                 
+;   Bres1@xyMarkerThicknesses = 5
+  Bres1@xyMarkerThicknesses = (/3,3,3,3,3,3,3,3,3,3,\
+                                3,3,3,3,3,3,3,3,3,3,\
+                                3,3,3,3,3,3,3,3,3,3/)
+;sanjiaoxing
+  new1 = NhlNewMarker(wks, "u", 34, 0, 0, 1, 1.7, 0)    
+  new2 = NhlNewMarker(wks, "u", 34, 0, 0, 1, 1.7, 90)     
+  new3 = NhlNewMarker(wks, "u", 34, 0, 0, 1, 1.7, 180)    
+  new4 = NhlNewMarker(wks, "u", 34, 0, 0, 1, 1.7, 270)  
+  new5 = NhlNewMarker(wks, "y", 35, 0, 0, 1, 1, 0)
+  new6 = NhlNewMarker(wks, "y", 35, 0, 0, 1, 1, 45)
+  new7 = NhlNewMarker(wks, "Z", 37, 0, 0, 1, 1, 0)
+  new8 = NhlNewMarker(wks, "z", 35, 0, 0, 1, 1.5, 0)
+
+  Bres1@xyMarkers           = (/new1,new2,new3,new4,new5,new6,new7,new8,new1,new2,\
+                                new3,new4,new5,new6,new7,new8,new1,new2,new3,new4,\
+                                new5,new6,new7,new8,new1,new2,new3,new4,new5,new6/)
+
+;;;;0虚线
+;   Bres1@gsnXRefLine=(/0/)
+;   Bres1@gsnXRefLineDashPatterns =1
+;   Bres1@gsnXRefLineThicknessF =3.
+;   Bres1@gsnXRefLineDrawOrder    ="PreDraw"
+;   Bres1@gsnXRefLineColors = (/"black"/)
+;   Bres1@gsnYRefLine=(/0/)
+;   Bres1@gsnYRefLineDashPatterns =1
+;   Bres1@gsnYRefLineThicknessF =3.
+;   Bres1@gsnYRefLineDrawOrder    ="PreDraw"
+;   Bres1@gsnYRefLineColors = (/"black"/)
+
+;   Bres1@tmYLMode="Explicit"
+;   Bres1@tmYLValues=(/0,-0.05,-0.1,-0.15,-0.2,-0.25,-0.3,-0.35,-0.4,-0.45,-0.5/)
+;   Bres1@tmYLLabels=(/"0","-0.05","-0.10","-0.15","-0.20","-0.25","-0.30","-0.35","-0.40","-0.45","-0.50"/)
+  Bres1@tmYLLabelFontHeightF =0.025
+
+;   Bres1@gsnLeftString         = "(a)Mean precipitation"
+;   Bres1@gsnLeftStringFontHeightF     = 0.02
+  Bres1@trYMaxF=0.6
+  Bres1@trYMinF=0
+  Bres1@trXMinF=0.1
+  Bres1@trXMaxF=0.9
+;   Bres1@tmXBMode="Explicit"
+;   Bres1@tmXBValues=(/4,5,6,7,8,9/)
+;   Bres1@tmXBLabels=(/"4.0","5.0","6.0","7.0","8.0","9.0"/)
+  Bres1@tmXBLabelFontHeightF =0.025
+
+ Bres1@vpWidthF = 0.5
+ Bres1@vpHeightF = 0.5
+
+  Bres1@tiYAxisString         = " Corr. DGPI & PDO"
+;   Bres1@tiXAxisString         = ""
+;   Bres1@tiXAxisFontThicknessF = 0.1
+;   Bres1@tiYAxisFontThicknessF = 0.1
+  Bres1@tiXAxisFontHeightF    = 0.025
+  Bres1@tiYAxisFontHeightF    = 0.025
+  Bres1@tiXAxisString         = " Corr. VM & DGPI"
+ 
+ Bres1@tmXBMinorOn  = False
+ Bres1@tmYLMinorOn  = False
+ Bres1@gsnYRefLine = (/0.301/)  ;   Df 41 95%  0.301
+ Bres1@gsnYRefLineDashPatterns = (/1/)
+ Bres1@gsnXRefLine = (/0.301/) 
+ Bres1@gsnXRefLineDashPatterns = (/1/)
+  ; txres               = True 
+;   txres@txFontHeightF = 0.015 
+;   gsn_text_ndc(wks,"R = -0.69",0.65,0.1,txres)
+;   gsn_text_ndc(wks,"R = -0.62",0.65,0.55,txres)
+
+
+  plot  = gsn_csm_xy (wks,transpose((/x1,x1/)),transpose((/y1,y1/)),Bres1)   
+
+
+; ;趋势线
+;    rc1       = regline(x1,y1)
+;   data1      = new ( (/2,dimsizes(x1)/), typeof(x1))
+;   data1(0,:) = x1
+;   data1(1,:) = rc1*x1 + rc1@yintercept   
+
+  
+;   res1 = Bres1
+;   res1@tmXBOn = False
+;   res1@tmXTOn = False
+;   res1@tmYLOn = False
+;   res1@tmYROn = False
+;   res1@xyMarkLineMode      = "Lines"
+; ;   res1@xyDashPatterns      = 0                      
+;   res1@xyLineThicknesses   = (/4/)   
+;   res1@xyLineColor         ="black"   
+
+ 
+;   plot11 = gsn_csm_xy(wks, x1, data1(1,:), res1)
+
+
+;   ; overlay(plot(0),plot11)  
+
+
+  ; ;趋势线
+  ; res_line = True   
+  ; res_line@gsLineDashPattern  = 2
+  ; res_line@gsLineThicknessF   = 2.5
+  ; res_line@gsLineColor        = "red"  
+  ; xx = (/6.95,6.95,12/) 
+  ; yy = (/-0.5,-0.232,-0.232/) 
+  ; dum1  = gsn_add_polyline(wks, plot(0), xx, yy, res_line)
+  ; dum2  = gsn_add_polyline(wks, plot(1), xx, yy, res_line)
+
+
+;;;;图例
+  labels1  = filename1 
+  markers1 = Bres1@xyMarkers 
+
+  mkres               = True         ; Marker resources
+  txres               = True         ; Text resources
+  txres@txFontHeightF = 0.010
+; txres@txFontHeightF = 0.01
+  txres@txJust        = "CenterLeft"
+  ww = 0.
+
+
+  ; do i = 0,14
+  ;   txres@txFontColor        = colors1(i)
+  ;   mkres@gsMarkerThicknessF = 2
+  ;   mkres@gsMarkerSizeF      = 0.009
+  ;   mkres@gsMarkerIndex      = markers1(i)
+  ;   mkres@gsMarkerColor      = colors1(i)
+  ;   gsn_polymarker_ndc(wks,0.75,0.605-ww,mkres)
+  ;   gsn_text_ndc      (wks," "+labels1(i),0.78,0.605-ww,txres)
+  ;   ww = ww+0.02
+
+  ; end do
+
+; ; panel plot only resources
+  resP                     = True         ; modify the panel plot
+  resP@gsnPanelLabelBar    = True       ; add common colorbar   
+  resP@pmLabelBarWidthF              = 0.7
+  resP@lbLabelFontHeightF               = 0.025
+  resP@txString = " "
+  resP@txFontHeightF = 0.05
+  resP@gsnPanelYWhiteSpacePercent = 5
+
+  gsn_panel(wks,plot,(/1,1/),resP)     ; now draw as one plot  
+
+
+
+  draw(plot)
+  frame(wks)
+end
