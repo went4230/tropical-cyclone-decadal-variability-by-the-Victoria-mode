@@ -1,0 +1,254 @@
+begin
+
+  latS   =  20;20.5   
+  latN   =  66;65.5  
+  lonL   =  124;120.5    
+  lonR   =  261;260.5 
+  lone   =  120
+  lonw   =  260
+  latb   =  20
+  latt   =  65
+  ymStrt =  190001
+  ymLast =  200012 
+  ymClimStrt = 190001   
+  ymClimLast = 200012
+
+
+
+  f_path  = "/mnt/d/"                     
+  f_sst   = addfile(f_path+"ncl/vm/HadISST_sst/HadISST_sst_2024.05.nc","r")  
+  time     = f_sst->time
+  lat      = f_sst->latitude  
+  lon      = f_sst->longitude 
+  sst_YYYYMM = cd_calendar(time, -1)                                     
+  istime     = ind(sst_YYYYMM.ge.ymStrt .and. sst_YYYYMM.le.ymLast)
+  cltime     = ind(sst_YYYYMM.ge.ymClimStrt .and. sst_YYYYMM.le.ymClimLast)  
+
+  sst_pri   = f_sst->sst(:,:,:)
+  sst_pri!0 = "time"
+  sst_pri!1 = "latitude"
+  sst_pri!2 = "longitude"
+  
+  sst_pri   = lonPivot(sst_pri, 0.5)       
+  sst_pri = where(abs(sst_pri).gt.500,sst_pri@_FillValue,sst_pri)
+
+  sst_selc  = sst_pri(istime , {latS:latN}, {lonL:lonR})  
+  sst_clm   = sst_pri(cltime , {latS:latN}, {lonL:lonR}) 
+  slon      = lon({lonL:lonR})
+  slat      = lat({latS:latN}
+
+  sstClm   = clmMonTLL(sst_clm)              
+  ssta = calcMonAnomTLL (sst_selc, sstClm)   
+  copy_VarCoords(sst_selc, ssta)
+  ssta@long_name = "ANOMALIES: "+sst_selc@long_name
+
+  rad    = 4.0*atan(1.0)/180.0
+  clat   = sqrt( cos(rad*slat) )             
+
+  wsst   = ssta                            
+  wsst   = ssta*conform(ssta, clat, 1)
+  copy_VarCoords(sst_selc, wsst)
+  wsst@long_name = "Wgt: "+wsst@long_name
+
+  sglb = sst_pri(istime,:,:)                 
+  copy_VarCoords(sst_pri, sglb)
+  sstClm_g   = clmMonTLL(sglb)
+  sta_g= calcMonAnomTLL (sglb, sstClm_g)     
+  sta_g@long_name = "globle SSTA"
+  nlat   = dimsizes( lat )
+  rad    = 4.0*atan(1.0)/180.0
+  re     = 6371220.0                          
+  rr     = re*rad
+
+
+  dlon   = abs(lon(2)-lon(1))*rr
+  dx     = dlon*cos(lat*rad)
+  dy     = new ( nlat, typeof(dx))
+  dy(0)         = abs(lat(2)-lat(1))*rr
+  dy(1:nlat-2)  = abs(lat(2:nlat-1)-lat(0:nlat-3))*rr*0.5
+  dy(nlat-1)    = abs(lat(nlat-1)-lat(nlat-2))*rr
+  area   = dx*dy                             
+
+  wsta_g = wgt_areaave(sta_g, area, 1.0, 0)
+  copy_VarCoords(sst_selc, wsta_g)
+ 
+  wsta_g@long_name = "Wgt: "+"globle SSTA"
+
+  sst_eof =wsst - conform(sst_selc, wsta_g, 0) 
+  copy_VarCoords(sst_selc, sst_eof)
+
+
+
+  neof   = 2      
+  optEOF = True       
+  optEOF@jopt = 0  
+  optETS = False
+
+  X      = sst_eof(latitude|:, longitude|:, time|:)
+  eof    = eofunc_Wrap(X, neof, optEOF)     
+  eof    =eof*(-1)
+  eof_ts = eofunc_ts_Wrap(X, eof, optETS)   
+
+  
+  do n = 0, neof - 1
+   std = dim_stddev_n_Wrap(eof_ts(n, :), 0)                     
+
+   eof(n,:,:)  = eof(n,:,:)*std
+
+   eof_ts(n,:) = eof_ts(n,:)/std 
+   if(n.eq.1)then
+        eof(n,:,:)  = eof(n,:,:)
+        eof_ts(n,:) = eof_ts(n,:)  
+      else   
+        eof(n,:,:)  = eof(n,:,:)
+        eof_ts(n,:) = eof_ts(n,:)
+   end if
+  end do
+  eof(1,:,:)  =1.0*eof(1,:,:) 
+ eof_ts(1,:) = 1.0*eof_ts(1,:)
+  eof_ts_run=runave_n_Wrap(eof_ts, 13, 0, 1)             
+
+r_code     = esccr(eof_ts(1,:), eof_ts(0,:), 0) 
+
+
+
+vm_pattern = eof(1,:,:) 
+  copy_VarCoords(eof(0,:,:), vm_pattern)
+
+  wks = gsn_open_wks("eps","vmi1949-2019")
+  gsn_define_colormap(wks,"GMT_panoply") 
+  
+  plot      = new(2*neof, graphic)            
+  plot_mean = new(2, graphic) 
+
+  res                   = True    
+  res@gsnAddCyclic      = False
+  res@gsnDraw           = False         
+  res@gsnFrame          = False        
+  res@gsnLeftString     = ""
+  res@gsnRightString    = ""  
+  res@gsnStringFontHeightF = 0.02       
+
+  res@vpHeightF            = 0.4        
+  res@vpWidthF             = 0.7
+  res@vpXF                 = 0.10       
+  res@vpYF                 = 0.75       
+    
+  res@mpFillOn        = False            
+  res@mpMinLatF       = latS           
+  res@mpMaxLatF       = latN            
+  res@mpCenterLonF    = 190              
+  res@mpMinLonF       = lonL
+  res@mpMaxLonF       = lonR
+  res@mpGeophysicalLineThicknessF = 3        
+  res@pmTickMarkDisplayMode= "Always"       
+  res@mpShapeMode              = "FreeAspect" 
+
+
+  res@cnFillOn              = True        
+  res@cnLinesOn             = False      
+  res@cnInfoLabelOn         = False      
+  res@cnLineLabelsOn        = False      
+  res@cnLevelSelectionMode  = "ExplicitLevels"
+  res@cnLevels              = (/-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4/)
+
+  res@lbLabelBarOn          = False             
+  res@pmLabelBarOrthogonalPosF = .20     
+  
+
+
+  res@tmXBLabelFontHeightF = 0.02       
+  res@tmXBLabelFontThicknessF = 50      
+  res@tmYLLabelFontHeightF = 0.02        
+  res@tmXBMajorLengthF     = 0.01        
+
+  res@tmXBMinorOn          = False       
+  res@tmYLMinorOn          = False        
+  res@tmXTOn               = False         ;不设YR轴
+
+
+
+  do n=0, neof-1
+
+    res@gsnRightString  = sprintf("%5.1f", eof@pcvar(n)) +"%" 
+    plot(n) = gsn_csm_contour_map(wks, eof(n,:,:), res)    
+  end do
+
+
+  res2                   = True    
+  res2@gsnDraw           = False         
+  res2@gsnFrame          = False  
+  res@gsnScale           = True  
+
+  res2@vpHeightF = 0.4   
+  res2@vpWidthF  = 0.7   
+  res2@vpXF      = 0.10  
+  res2@vpYF      = 0.75  
+
+
+  res2@trYMaxF   = 4                         
+  res2@trYMinF   = -4 
+ 
+  res2@tmYLLabelFontHeightF  = 0.02
+  res2@tmXBMajorLengthF      = 0.01          
+  res2@tmYLMajorLengthF      = 0.01
+
+  res2@tmXBMinorOn          = False          
+  res2@tmXBMinorLengthF = 0.006
+  res2@tmYLMinorOn          = False          
+  res2@tmXTOn               = False          
+  res2@tmYROn               = False          
+
+  res2@tiYAxisOn              = False        
+  res2@tiXAxisOn              = True          
+  res2@tiXAxisString          = "year"       
+  res2@tiXAxisFontHeightF     = 0.02          
+
+  res2@tmXBOn = True
+  res2@tmXBMode = "Explicit"
+ 
+  res2@tmXBLabelFontHeightF  = 0.02          
+  res2@tmXBTickSpacingF = 5
+  
+    
+  res2@gsnYRefLine           = 0.            
+  res2@gsnAboveYRefLineColor = "red"  
+  res2@gsnBelowYRefLineColor = "blue"       
+  res2@gsnStringFontHeightF  = 0.02 
+
+  res2@xyLineColor = -1
+  res2@xyLineThicknessF = 4
+
+
+  yyyymm = cd_calendar(eof_ts&time, -1)
+  yrfrac = yyyymm_to_yyyyfrac(yyyymm, 0.0)
+  do n=0, neof - 1
+    
+     plot(n+neof) = gsn_csm_xy (wks,yrfrac,eof_ts(n,:),res2)
+  end do
+
+
+  resP = True                       
+
+  res@gsnPanelCenter       = True        
+  resP@gsnMaximize         = True        
+  resP@gsnPanelLabelBar    = True        
+  resP@gsnPanelYWhiteSpacePercent = 15   
+  resP@gsnPanelXWhiteSpacePercent = 4     
+  resP@pmLabelBarOrthogonalPosF =0.4      
+  resP@pmLabelBarHeightF =0.05  
+  resP@lbLabelFontHeightF =0.01
+
+  resP@gsnPanelFigureStrings= (/"EOF1","EOF2","PC1","PC2"/)  
+  resP@gsnPanelFigureStringsFontHeightF = 0.01   
+  resP@amJust = "TopLeft"                        
+  resP@gsnPanelFigureStringsPerimOn = False      
+
+  do n=0,neof-1
+    plot_mean(n) =gsn_csm_xy(wks,yrfrac,eof_ts_run(n,:), res2)
+    overlay(plot(n+2), plot_mean(n))
+  end do
+
+  resP@gsnPanelRowSpec = True                    
+  gsn_panel(wks, plot, (/2,2/), resP)            
+end
