@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+
+
+@author: WTao
+"""
+#载入需要的模块
+import pandas as pd 
+import os
+from datetime import datetime
+from datetime import timedelta
+import time
+import netCDF4 as nc
+
+#PART1:df_day 文件合并
+#获取目标路径
+path = '/Users/yxin/Documents/WTao/cma_Bstdata' #文件夹路径
+files_tmp = os.listdir(path) #查看文件夹下的所有文件名称,包括‘.DC_Store’
+files=sorted(os.listdir(path))	#文件名按字母排序
+#除去‘.DC_Store’多余文件
+datalist = [] #用于存放应获取的文件
+for i in files:
+    if os.path.splitext(i)[1] == '.txt':     #选取后缀为txt的文件加入datalist
+        datalist.append(i)
+#遍历读取文件夹的文件合并为一个文件
+cma = pd.DataFrame() #存放每个站点该月的平均值
+ty_num= 0
+flag=1
+for txt in datalist:
+    cma_tmp = pd.DataFrame() #存放每个站点该月的平均值
+    data_path = os.path.join(path,txt)    #列出path路径下目标文件的绝对路径，将其赋值给data_path
+    df_txt = pd.read_table(data_path, header = None, index_col = False,sep='\s+') 
+            #读取目标txt文件，不把原Data第一列作为索引,标题不存在，以空格分割
+    column66666 = df_txt[df_txt[0].isin([66666])] #提取66666行
+    column66666_index = column66666.index
+    index_station = 0
+    while True: #无限循环
+        column66666_num1 = column66666_index[index_station] #记录取站点第一次出现的站点号
+        column66666_num2 = column66666_index[index_station+1] #记录取站点第一次出现的站点号
+        data_just1ty = df_txt.iloc[column66666_num1+1:column66666_num2] # 该站点6月降水集合dataframe
+        data_just1ty[7] = ty_num
+        ty_num = ty_num+1
+        cma_tmp = pd.concat([cma_tmp,data_just1ty],axis=0, ignore_index=True)
+        index_station = index_station + 1
+        if index_station+1  == len(column66666_index):
+            column66666_num3 = len(df_txt) #记录取站点第一次出现的站点号
+            data_just1ty = df_txt.iloc[column66666_num2+1:column66666_num3] # 该站点6月降水集合dataframe
+            data_just1ty[7] = ty_num
+            ty_num = ty_num+1
+            cma_tmp = pd.concat([cma_tmp,data_just1ty],axis=0, ignore_index=True)
+            break
+
+    cma_tmp['datetime'] = pd.to_datetime(cma_tmp[0],format = '%Y%m%d%H')
+#    cma_tmp['date2'], cma_tmp['time2'] = cma_tmp['datetime2'].dt.normalize(), cma_tmp['datetime2'].dt.time
+    cma_tmp.drop(cma_tmp.columns[[8]], axis=1,inplace=True) # 删除没必要的列    
+#    cma_date_tmp = cma['time'].str.split(r':', expand=True) #首先进行拆分 
+#    pd.concat([cma, cma_date_tmp], axis=1) #concat把多列并入原dataframe,, names=new_names
+    cma = pd.concat([cma,cma_tmp],axis=0, ignore_index=True)
+    flag = flag+1
+#列命名 调整顺序
+cma.columns=list(['YYYYMMDDHH','I','LAT','LON','PRES','WND','OWD','Tynum','DateTime']) #列命名
+cma = cma[['Tynum','DateTime','YYYYMMDDHH','I','LAT','LON','PRES','WND','OWD']]
+
+#保存
+cma.to_csv('/Users/yxin/Documents/WTao/cma_Bstdata/cma_all',index=False)
+    # index=False 表示不保存索引数据
+#nc格式： 创建一个格式为.nc的，名字为 ‘hecheng.nc’的
+#f_w = nc.Dataset('hecheng.nc','w',format = 'NETCDF4')  
