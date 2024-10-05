@@ -1,0 +1,345 @@
+;;;;;DGPI 计算；参考公式by Wang and Murakami (2020)
+;;;@author: went
+;;;;;;;
+begin
+
+f_uwnd  = addfile("/mnt/d/data/for_dgpi/uwnd.mon.mean.nc","r")  
+f_vwnd  = addfile("/mnt/d/data/for_dgpi/vwnd.mon.mean.nc","r")
+f_omega = addfile("/mnt/d/data/for_dgpi/omega.mon.mean.nc","r")
+
+
+omega   = f_omega->omega(:,5,:,:) ;500hPa
+uwnd    = f_uwnd->uwnd(:,:,:,:)
+vwnd    = f_vwnd->vwnd(:,:,:,:)
+lat      = f_uwnd->lat  
+lon      = f_uwnd->lon 
+
+
+;;;;;500hPa的梯度
+uLow    = uwnd(:,5,:,:)  ;500hPa  
+graLatLon =grad_latlon_cfd(uLow, lat, lon, True, False)
+uwnd_grad = graLatLon[0]
+;;;;850hpa的绝对涡度
+uwndi    = uwnd(:,2,:,:)  ;200hPa  500  850
+vwndi    = vwnd(:,2,:,:)  ;9        5    2
+
+vr= uv2vrG_Wrap(uwndi, vwndi)
+ copy_VarCoords(uwndi, vr)
+rad = 4.*atan(1.)/180.
+W   = 7.292e-5                   ; (1/s)     ; earth ang rotation
+f   = 2.*W*sin(lat*rad)  
+f:= doubletofloat(f)
+vr  = vr + conform(vr,f,1)     ; absolute vorticity 
+;;;;;UVWS
+uHigh    = uwnd(:,9,:,:)  ;200 
+vHigh    = vwnd(:,9,:,:) 
+
+  uShear = uHigh - uwndi
+  copy_VarMeta( uHigh, uShear )
+  uShear@long_name = "Zonal Wind Shear"
+  uShear@units = "m/s"
+
+  vShear = vHigh - vwndi
+  copy_VarMeta( vHigh, vShear )
+  vShear@long_name = "Zonal Wind Shear"
+  vShear@units = "m/s"
+
+
+  magnitude = sqrt( uShear^2 + vShear^2 )
+  copy_VarMeta( uShear, magnitude )
+  magnitude@long_name = "Zonal Wind Shear Magnitude"
+  magnitude@units = "m/s"    ;;UVWS
+
+; Calculate the values
+d1 = (2 + 0.1 * magnitude) ^ (-1.7)    ; 计算 d1 的值
+d2 = (5.5 - uwnd_grad * 100000) ^ 2.3         ; 计算 d2 的值
+d3 = (5 - 20 * omega) ^ 3.3                    ; 计算 d3 的值
+d4 = ((5.5 + abs(100000 * vr)) ^ 2.4) * exp(-11.8)  ; 计算 d4 的值
+dgpi = d1*d2*d3*d4-1                    ; 计算 dgpi 的值
+; printVarSummary(d1)
+; printVarSummary(uvw_VerticalShear)
+
+copy_VarCoords(magnitude,dgpi) 
+
+printVarSummary(dgpi)
+yrStrt =  1950
+yrLast =  2022
+yrClimStrt = 1981   
+yrClimLast = 2010
+
+
+  latS   =  -20;20.5   
+  latN   =  66;65.5  
+  lonL   =  90;120.5    
+  lonR   =  300;260.5 
+
+  YYYY    = cd_calendar(uwnd&time,-1)/100                 ; entire file
+  iYYYY   = ind(YYYY.ge.yrStrt .and. YYYY.le.yrLast)
+  climYYYY= ind(YYYY.ge.yrClimStrt .and. YYYY.le.yrClimLast)
+
+
+    ssti    = dgpi(iYYYY, {latS:latN}, {lonL:lonR})
+  climsst   = dgpi(climYYYY , {latS:latN}, {lonL:lonR}) 
+
+  sstClm  = clmMonTLL(climsst)
+  ssta    = calcMonAnomTLL (ssti, sstClm)
+  copy_VarCoords(ssti, ssta)
+  ssta@long_name = "ANOMALIES: "+ssti@long_name
+  ssta!1   = "lat"
+  ssta!2   = "lon"
+  lat2     = ssta&lat
+  lon2     = ssta&lon
+
+  yearmonthnum = ispan(0, dimsizes(ssta&time)-1, 1)
+  ssta    = dtrend_msg_n(yearmonthnum, ssta,True, False, 0)
+printVarSummary(ssta)
+; exit() 
+vr_cl_JJASO = new((/73,35,85/),float)
+vr_cl_JJASO!0 = "time"
+; vr_cl_JJASO&time = isu_lf&time
+vr_cl_JJASO!1 = "lat"
+vr_cl_JJASO&lat = ssta&lat
+vr_cl_JJASO!2 = "lon"
+vr_cl_JJASO&lon = ssta&lon
+
+do i = 0, 72
+vr_cl_JJASO(i,:,:) = (ssta(5+12*i,:,:)+ssta(6+12*i,:,:)+ssta(7+12*i,:,:)+ssta(8+12*i,:,:)+ssta(9+12*i,:,:))/5
+end do 
+copy_VarCoords(vr_cl_JJASO, ssta)
+
+printVarSummary(vr_cl_JJASO)
+; exit()
+;;;;;********读取VM指数*********
+
+f2            = addfile("/mnt/d/data/vmi_1900-2022.nc", "r")
+VMI           = f2->vmi
+vmi_FMA_120year       = month_to_season(VMI, "FMA")
+vmi_vmi = -1*vmi_FMA_120year(50:)  
+vmi_FMA = dim_standardize_Wrap(vmi_vmi, 0)
+
+
+  f_pdo   = readAsciiTable("/mnt/d/data/pdo_1900-2023.txt", 13, "float", (/0,0/) )
+  pdo_index = new((/124,13/), "float", "No_FillValue")
+  do i = 0,124-1
+    pdo_index(i,:) = f_pdo(i,:)   ;i*12:(i+1)*12-1
+  end do
+  pdo_i   = pdo_index(50:,6:10)   ;确定是1950-2022年
+  pdo_i!0 = "year"
+  pdo_i!1 = "index"
+pdo_year_index = dim_avg_n_Wrap(pdo_i, 1)
+pdo = dim_standardize_Wrap(pdo_year_index(:72), 0)
+;;读取IPO指数**********
+      ;;读取IPO指数**********
+  ncol = 13   
+  f_ipo   = readAsciiTable("/mnt/d/data/ipo_1900-2022.txt", ncol, "float", (/0,0/) )
+  ipo_index = new((/123,13/), "float", "No_FillValue")
+  do i = 0,123-1
+    ipo_index(i,:) = f_ipo(i,:)   ;i*12:(i+1)*12-1
+  end do
+
+   vmyear    = ipo_index(:,0)   ;提取年份
+  ipo_i   = ipo_index(50:,6:10)   ;确定是1950-2022年
+  ipo_i!0 = "year"
+  ipo_i!1 = "index"
+ipo_year_index = dim_avg_n_Wrap(ipo_i, 1)
+ipo = dim_standardize_Wrap(ipo_year_index, 0)
+
+ipo:= pdo
+;********************************
+;滤波
+;***************---
+  ihp_l    = 0                             ; 0-低通；1-高通；2-带通
+  ihp_h    = 1
+  nWgt     = 11
+  sigma    = 1.0                           ; Lanczos sigma
+  fca      = 0.1
+  fcb      = -999
+  wgt_l      = filwgts_lanczos (nWgt, ihp_l, fca, fcb, sigma ) 
+
+
+
+  vm_l = wgt_runave_n_Wrap(vmi_FMA, wgt_l, -1, 0)
+  vm_LF=dim_standardize_n_Wrap(vm_l(:),0,0) 
+
+  ipo_l = wgt_runave_n_Wrap(ipo, wgt_l, -1, 0)
+  ipo_LF=dim_standardize_n_Wrap(ipo_l(:),0,0)
+;;;;;;;相关
+vm_LF := vm_LF(:)
+ipo_LF := ipo_LF(:)
+vr_cl_JJASO :=  vr_cl_JJASO(:,:,:)
+
+    corr_vm = escorc_n(vm_LF,vr_cl_JJASO,0,0)
+    copy_VarCoords(vr_cl_JJASO(0,:,:),corr_vm) 
+    corr_ipo = escorc_n(ipo_LF,vr_cl_JJASO,0,0)
+    copy_VarCoords(vr_cl_JJASO(0,:,:),corr_ipo)  
+
+
+
+
+ ;显著性检验
+  n = dimsizes(ipo)
+  df = n-2
+  t = corr_vm*sqrt((n-2)/(1-corr_vm^2)) ;t检验
+  prob0_tc_fma_0 = student_t(t, df) ;两侧student-t分布概率值
+  psig = 0.05
+  copy_VarMeta(corr_vm(:,:), prob0_tc_fma_0(:,:))
+  prob1_vm = where(prob0_tc_fma_0.le.0.05, prob0_tc_fma_0, prob0_tc_fma_0@_FillValue)
+  copy_VarMeta(prob0_tc_fma_0(:,:), prob1_vm(:,:))
+
+  t_tc_AMJ = corr_ipo*sqrt((n-2)/(1-corr_ipo^2)) ;t检验
+  prob0_tc_AMJ_0 = student_t(t_tc_AMJ, df) ;两侧student-t分布概率值
+  psig = 0.05
+  copy_VarMeta(corr_ipo(:,:), prob0_tc_AMJ_0(:,:))
+  prob1_ipo = where(prob0_tc_AMJ_0.le.0.05, prob0_tc_AMJ_0, prob0_tc_AMJ_0@_FillValue)
+  copy_VarMeta(prob0_tc_AMJ_0(:,:), prob1_ipo(:,:))
+
+wks  = gsn_open_wks("eps","test_all_pdo")            
+
+cnplot        = new(2, graphic)
+shade         = new(2, graphic)
+ cnres = True   
+cnres@gsnDraw = False ; don't draw
+cnres@gsnFrame = False ; don't advance frame
+cnres@cnFillOn         = True                 ; シェードを使う
+ cnres@cnLinesOn        = False                ; コンターは使わない
+cnres@cnLineLabelsOn   = False                ; コンターラベルもない
+cnres@cnInfoLabelOn    = False                ; コンター情報もない
+cnres@lbLabelBarOn     = False                ; 各パネルごとにはカラーバーを描かない(今のところ)
+                                               ; あとで一時的にTrueとなる
+cnres@lbTitleOn        = True                 ; カラーバーにタイトルを付ける
+cnres@lbTitlePosition  = "Right"              ; カラーバーのタイトルの位置
+cnres@lbTitleDirection = "Across"             ; カラーバーのタイトルの向き
+cnres@pmLabelBarOrthogonalPosF    = 0.3       ; カラーバーの位置を少し下にずらす
+  
+cnres@gsnAddCyclic     = False                ; 経度方向に周期的ではない
+cnres@tmXTOn           = False                ; 上側のx軸を用いない(目盛を消す)
+cnres@cnLevelSelectionMode = "ExplicitLevels"   ; コンターレベルの設定を"ManvalLevels"モードに
+ cnres@mpLandFillColor      = "white"            ;land white  
+
+
+  cnres@mpMinLatF            = -5         ; zoom in on map
+  cnres@mpMaxLatF            = 25
+ cnres@mpMinLonF            = 120
+  cnres@mpMaxLonF            = 190
+ cnres@mpCenterLonF         = 155
+  cnres@mpGeophysicalLineThicknessF = 2
+
+ cnres@tmXBMinorOn  = False
+ cnres@tmYLMinorOn  = False
+
+  cnres@tmYLLabelFontHeightF  =0.02
+ cnres@tmXBLabelFontHeightF  =0.02
+ cnres@gsnMajorLatSpacing = 10
+cnres@tmYLLabelStride = 1
+cnres@tmYLLabelFontHeightF = 0.04
+cnres@tmYLLabelDeltaF   =-0.6
+
+ cnres@gsnMajorLatSpacing = 10
+cnres@tmYLLabelStride = 1
+cnres@tmYLLabelFontHeightF = 0.04
+cnres@tmYLLabelDeltaF   =-0.6
+
+; cnres@cnLevelSelectionMode = "ExplicitLevels"    D:\ncl\DingRQ
+    cmapxxx = read_colormap_file("/mnt/d/data/DiLoronzo-18colors.rgb")
+    cnres@cnFillPalette = cmapxxx         
+    lev_ = new(17,float)
+    kkk := -0.8
+    do i = 0 ,dimsizes(lev_)-1
+         lev_(i) = kkk
+         kkk = kkk +0.8*2/16.0
+    end do 
+    cnres@cnLevels        = lev_ 
+
+
+cnres@lbTitleString            = "~S~o~N~C"
+  ; cnres@lbTitleFontHeightF       = 0.008
+ ; cnres@lbLabelFontHeightF       = 0.008
+ ;cnres@gsnLeftString            = "SST"
+ cnres@gsnRightString            = ""
+ cnres@gsnLeftString            = ""
+ ; cnres@gsnLeftStringFontColor   = "blue"
+  ; cnres@gsnLeftStringFontHeightF = 0.014
+  cnres@tmYLOn                   = True        ; 左側のy軸を使わない
+  cnres@tmYLLabelsOn             = True
+  cnres@tmYROn                   = False         ; 右側のy軸を使う
+  cnres@tmYRLabelsOn             = False
+ ; cnres@tmYLTickSpacingF         = 5
+  cnres@tmXBLabelFontHeightF     = 0.02
+cnres@tmYUseLeft               =False
+  cnres@mpShapeMode              = "FreeAspect" ; 地図プロットの縦横比を可変に
+  cnres@vpHeightF                =0.3
+  cnres@vpWidthF                 = 0.65          ; 图的宽度比例                                           ; これに合わせて地図は縦長になる
+ cnres@tmXBTickSpacingF         = 20           ; 横軸の目盛間隔を45°に
+  cnres@tmYLLabelFontHeightF     = 0.02   ;标签字体大小
+ cnres@tmYLOn                   =  True     ; 左側のy軸を使わない
+ cnres@tmYLLabelsOn             = True
+ cnres@tmXBOn                   = True
+ cnres@tmXBLabelsOn             = True
+
+cnplot(0)= gsn_csm_contour_map(wks,corr_vm,cnres)  ; rc_nao_ssta  
+cnplot(1)= gsn_csm_contour_map(wks,corr_ipo,cnres)  ; rc_nao_ssta  
+
+ resP                     = True         ; modify the panel plot
+resP@gsnMaximize         = True         ; large format
+resP@gsnPanelLabelBar    = True         ; add common colorbar
+;resP@lbBoxEndCapStyle    =  "TriangleBothEnds"  ; shape of the two outer boxes of the LabelBar
+resP@lbLabelStride  =2
+resP@gsnPanelYWhiteSpacePercent  =4     ;空白区域比例
+; resP@lbLabelStrings = (/-0.4,-0.3,-0.2,-0.1,0.1,0.2,0.3,0.4/)
+
+;resP@gsnPanelBottom   = 0.3                   ; add space at bottom
+resP@pmTickMarkDisplayMode  ="Always"
+; resP@lbOrientation= "Horizontal"
+; resP@pmLabelBarOrthogonalPosF = -0.05
+; resP@pmLabelBarWidthF= 0.7
+; resP@pmLabelBarHeightF=0.1
+
+
+
+resP@lbOrientation= "Vertical"
+resP@pmLabelBarOrthogonalPosF = 0.025
+resP@pmLabelBarWidthF= 0.1
+resP@pmLabelBarHeightF=0.7
+;;;;;;;;;;;;打点
+
+
+; gsnLeftStringFontHeightF
+ress        = True
+ress@gsnDraw = False
+ress@gsnFrame= False
+
+; ress@gsnLeftStringFontHeightF = 0.05
+; ress@gsnRightStringFontHeightF= 0.05
+; ress@gsnLetfStringFontHeightF= 0.05
+ress@cnInfoLabelOn     = False
+ress@lbLabelBarOn      = False
+ress@cnLinesOn         = False
+ress@cnFillOn          = True
+ress@cnFillPattern     = 17
+ress@cnFillScaleF      = 2
+ress@cnLevelSelectionMode = "ManualLevels"
+ress@cnFillOpacityF = 0.5
+ress@cnLineLabelsOn      = False
+ress@gsnSpreadColorStart = 1
+ress@gsnSpreadColorEnd   = 1
+ress@cnFillDotSizeF         = 0.004
+
+
+
+; ress@gsnLeftString = "VM"
+; ress@gsnRightString= "FMA"
+shade(0)    = gsn_csm_contour(wks, prob1_vm  , ress) ;rc_pdo_ssta  Pv_pdo_ssta
+overlay(cnplot(0), shade(0))
+
+
+; ress@gsnLeftString = "IPO"
+; ress@gsnRightString= "AMJ"
+shade(1)    = gsn_csm_contour(wks, prob1_ipo  , ress) ;rc_pdo_ssta  Pv_pdo_ssta
+overlay(cnplot(1), shade(1))
+
+
+
+gsn_panel(wks, (/cnplot/), (/2,1/), resP)
+
+end
+
