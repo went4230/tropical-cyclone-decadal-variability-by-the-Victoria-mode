@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+
+@author: WENT
+"""
+
+#载入需要的模块
+import pandas as pd 
+
+#STEP1:读取文件
+path = '/Users/yxin/Documents/WTao/cma_Bstdata/select_3conditions/cma_456_mon'
+cma_select_alltime = pd.read_csv(path, index_col = False, sep=',')
+	#header=None不把第一行作为索引值，index_col = False不把第一列作为索引值
+#取台风生成信息
+first_ty = pd.DataFrame() 
+d = cma_select_alltime['Tynum'] 
+num = cma_select_alltime['Tynum'].value_counts() #站点为索引值，对应的为次数
+index_station = 0 #存放每个站点第一次出现的索引值
+while True: #无限循环
+    station_num = d[index_station] 
+    station_time = num.loc[station_num] 
+    just1ty = cma_select_alltime.iloc[index_station].to_frame().T 
+    first_ty = pd.concat([first_ty,just1ty],axis=0, ignore_index=True)
+    index_station = index_station + station_time
+    if index_station == len(cma_select_alltime):
+        break
+#统计台风的年序列
+allregion_year = first_ty['year']
+allregion_year_num = first_ty['year'].value_counts() #站点为索引值，对应的为次数
+#统计区域台风的年序列
+lat = first_ty['LAT']*0.1//5*5
+lon = first_ty['LON']*0.1//5*5
+year = first_ty['year']
+ty_area  = pd.DataFrame(columns=['year','lat','lon'])
+ty_area ['year'] = year
+ty_area ['lat'] = lat
+ty_area ['lon'] = lon
+ty_area  = ty_area [ty_area ['lon'].isin([140,145,150,155,160,165,170,175])]
+ty_area  = ty_area [ty_area ['lat'].isin([0,5,10,15])]
+ty_area  = ty_area .reset_index(drop=True)
+#STEP2：提取切片后的数值
+region_year = ty_area['year']
+region_year_num = ty_area['year'].value_counts() #站点为索引值，对应的为次数
