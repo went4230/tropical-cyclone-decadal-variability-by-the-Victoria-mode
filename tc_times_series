@@ -1,0 +1,196 @@
+
+
+undef("cal_ndf")
+function cal_ndf(x:numeric,y:numeric)
+begin
+    demxx = dimsizes(x)
+    demyy = dimsizes(y)
+demx = int2flt(demxx)
+demy = int2flt(demyy)
+
+    if demx .eq. demy then
+        xlag1    = esacr(x,1)
+        xlag2    = esacr(x,2)
+        xlag3    = esacr(x,3)
+        xlag4    = esacr(x,4)
+        xlag5    = esacr(x,5)
+        xlag6    = esacr(x,6)
+        xlag7    = esacr(x,7)
+        xlag8    = esacr(x,8)
+        xlag9    = esacr(x,9)
+        xlag10   = esacr(x,10)
+
+        ylag1    = esacr(y,1)
+        ylag2    = esacr(y,2)
+        ylag3    = esacr(y,3)
+        ylag4    = esacr(y,4)
+        ylag5    = esacr(y,5)
+        ylag6    = esacr(y,6)
+        ylag7    = esacr(y,7)
+        ylag8    = esacr(y,8)
+        ylag9    = esacr(y,9)
+        ylag10   = esacr(y,10)
+
+  ndf_x_y  = demx/(1+2*(((demx-1)/demx)*xlag1(1)*ylag1(1)+((demx-2)/demx)*xlag2(2)*ylag2(2)+((demx-3)/demx)*xlag3(3)*ylag3(3)+\
+                        ((demx-4)/demx)*xlag4(4)*ylag4(4)+((demx-5)/demx)*xlag5(5)*ylag5(5)+((demx-6)/demx)*xlag6(6)*ylag6(6)+\
+                        ((demx-7)/demx)*xlag7(7)*ylag7(7)+((demx-8)/demx)*xlag8(8)*ylag8(8)+((demx-9)/demx)*xlag9(9)*ylag9(9)+\
+                        ((demx-10)/demx)*xlag10(10)*ylag10(10)  ))
+
+  ndf_x_y2  = floattointeger(ndf_x_y)
+
+        return(ndf_x_y2)
+    else
+        print("two var dimension need be the same")
+        exit
+    end if 
+end
+
+
+
+
+begin
+
+f21            = addfile("/mnt/d/data/vmi_1900-2022_eof.nc", "r")
+mmmi           = f21->vmi
+mmmi_FMA_120year       = month_to_season(mmmi, "FMA")
+mmmi_mmmi = -1*mmmi_FMA_120year(50:)  
+vmi_FMA = dim_standardize_Wrap(mmmi_mmmi, 0)
+
+nmu_vmi =-1*mmmi(599:)
+DJFMA_vm = new((/73/),float)
+do i = 0,73-1
+DJFMA_vm(i) = (nmu_vmi(3+12*i)+nmu_vmi(4+12*i)+nmu_vmi(5+12*i))/3
+end do 
+vmi_DJFMA =  dim_standardize_Wrap(DJFMA_vm, 0)
+
+vmi_FMA :=vmi_DJFMA
+
+  ncol = 13   
+  f_ipo   = readAsciiTable("/mnt/d/data/ipo_1900-2022.txt", ncol, "float", (/0,0/) )
+  ipo_index = new((/123,13/), "float", "No_FillValue")
+  do i = 0,123-1
+    ipo_index(i,:) = f_ipo(i,:)  
+  end do
+   time    = ipo_index(50:,0)   
+   time!0  = "year"
+   time@units = "years since 1950" 
+
+   vmyear    = ipo_index(:,0)   
+  ipo_i   = ipo_index(50:,6:10)  
+  ipo_i!0 = "year"
+  ipo_i!1 = "index"
+ipo_year_index = dim_avg_n_Wrap(ipo_i, 1)
+ipo = dim_standardize_Wrap(ipo_year_index, 0)
+   
+  f_pdo   = readAsciiTable("/mnt/d/data/pdo_1900-2023.txt", 13, "float", (/0,0/) )
+  pdo_index = new((/124,13/), "float", "No_FillValue")
+  do i = 0,124-1
+    pdo_index(i,:) = f_pdo(i,:)  
+  end do
+  pdo_i   = pdo_index(50:,2:4)   
+  pdo_i!0 = "year"
+  pdo_i!1 = "index"
+pdo_year_index = dim_avg_n_Wrap(pdo_i, 1)
+pdo = dim_standardize_Wrap(pdo_year_index(:72), 0)
+
+f_tc   = readAsciiTable("/mnt/d/data/cma_1949-2022.txt", 7, "float", (/0,0/) ) 
+tc_index = new((/74,7/), "float", "No_FillValue")
+  do i = 0,74-1
+
+
+    tc_index(i,:) = f_tc(i,:)  
+  end do  
+   tc        = tc_index(:,1)   
+   tc!0       = "tc"
+   tc_std = dim_standardize_Wrap(tc(1:), 0)
+
+   time@units = "years since 1950" 
+  tc_se   = tc_index(:,2)  
+  tc_se_s = dim_standardize_Wrap(tc_se(1:), 0)
+
+tc_se_std = dtrend(tc_se_s, True)
+
+
+  ihp_l    = 0                           
+  nWgt     = 11
+  sigma    = 1.0                           
+  fca      = 0.1
+  fcb      = -999
+  wgt_l      = filwgts_lanczos (nWgt, ihp_l, fca, fcb, sigma )
+
+  vmi_f_l = wgt_runave_n_Wrap(vmi_FMA, wgt_l, -1, 0)
+  pdo_l = wgt_runave_n_Wrap(pdo, wgt_l, -1, 0) 
+  tc_l = wgt_runave_n_Wrap(tc_se_std, wgt_l, -1, 0)
+
+
+
+
+  vmi_LF=dim_standardize_n_Wrap(vmi_f_l(:),0,0)
+  pdo_LF=dim_standardize_n_Wrap(pdo_l(:),0,0)  
+  tc_LF=dim_standardize_n_Wrap(tc_l(:),0,0)  
+
+
+
+
+y = new((/3,73/),"float")
+y(0,:) = vmi_LF(:)  
+y(1,:) = pdo_LF(:)
+y(2,:) = tc_LF(:)
+
+
+year= 1949+ispan(1, 73, 1)
+
+;画图
+wks = gsn_open_wks("eps", "tc_vmi_pdo_LF")
+
+res                  = True 
+ ; res@gsnCenterString = "9-point Lanczos filterd of TC & VMI (LF)"
+ res@xyLineThicknessF =5
+ res@xyDashPatterns    = (/0,0,0,3,3,0,0/)
+ res@xyMarkLineMode="Lines"    ;画点线
+ res@pmLegendDisplayMode    = "Always"
+ res@lgPerimOn              = False
+ res@pmLegendWidthF         = 0.15
+ res@pmLegendHeightF        = 0.08 
+ ; res@xyExplicitLegendLabels = (/"TC","CPI","VMI","IPO"/)  ; 3
+  ; res@xyExplicitLegendLabels = (/"IPO","TC_E"/)  ;2
+ res@pmLegendOrthogonalPosF = -1.35
+ res@pmLegendParallelPosF   = 0.85
+ res@lgLabelOffsetF         = 0.13
+ res@tmXTOn = False
+ res@tmYROn = False   ;关闭左上刻度线
+ res@vpWidthF = 0.7
+ res@vpHeightF = 0.3
+
+
+ res@tmXBMinorOn  = False
+ res@tmYLMinorOn  = False
+ res@xyMarker         = 16
+ res@xyMarkerThicknessF=0.5
+ res@xyMarkerSizes   = 0.008
+ res@gsnYRefLine = (/0/)
+ res@gsnYRefLineDashPatterns = (/0/)
+ res@trYMinF           = -4
+ res@trYMaxF           = 4
+  res@xyMarkerColors   = (/"red","blue","grey40","blue","purple","black","purple"/);orangered3
+ res@xyLineColors     = (/"red","blue","grey40","blue","purple","black","purple"/)
+ res@xyExplicitLegendLabels = (/"VMI","PDO","TC","VMI_P","IPO_P","PMM","Nino34"/)  ; 3
+
+
+ ;  res@xyMarkerColors   = (/"black","red","green","blue","GreenYellow","black","purple"/);orangered3
+ ; res@xyLineColors     = (/"black","red","green","blue","GreenYellow","black","purple"/)
+ ;  res@xyExplicitLegendLabels = (/"TC","Nino34","VMI","IPO","NPGO","PMM","Nino34"/)  ; 3
+
+ ;  res@xyMarkerColors   = (/"red","black"/);2 
+ ; res@xyLineColors      = (/"red","black"/)
+
+ res@tiYAxisString          = "Index"  ; add units to title 
+ res@tiYAxisFontHeightF =0.025
+ res@tiXAxisString          = "year"  ; add units to title 
+ res@tiXAxisFontHeightF =0.025
+ res@tiMainString          = ""      ; title
+ res@tmYLLabelFontHeightF  =0.02
+ res@tmXBLabelFontHeightF  =0.02
+plot = gsn_csm_xy(wks,year,y,res)
+
+end 
